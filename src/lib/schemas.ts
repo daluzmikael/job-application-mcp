@@ -16,7 +16,9 @@ export const JobPostingSchema = z.object({
 export type JobPosting = z.infer<typeof JobPostingSchema>;
 
 export const ApplicationStatusSchema = z.enum([
+  "not_applied",
   "applied",
+  "reviewing",
   "interviewing",
   "rejected",
   "accepted",
@@ -29,6 +31,8 @@ export const ApplicationMetadataSchema = z.object({
   company: z.string(),
   role: z.string(),
   url: z.string().nullable().default(null),
+  location: z.string().nullable().default(null),
+  role_type: z.string().nullable().default(null),
   posting_date: z.string().nullable().default(null),
   applied_date: z.string().nullable().default(null),
   resume_used: z.string().nullable().default(null),

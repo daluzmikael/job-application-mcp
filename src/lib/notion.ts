@@ -9,7 +9,9 @@ const NOTION_VERSION = "2025-09-03";
 const NOTION_API_BASE = "https://api.notion.com/v1";
 
 const STATUS_MAP: Record<ApplicationStatus, string> = {
+  not_applied: "Not applied",
   applied: "Applied",
+  reviewing: "Reviewing application",
   interviewing: "Interviewing",
   rejected: "Rejected",
   accepted: "Hired!",
@@ -42,7 +44,9 @@ function buildProperties(app: ApplicationMetadata): Record<string, unknown> {
   if (app.follow_up_date) properties["Follow Up Date"] = { date: { start: app.follow_up_date } };
   if (app.ats_score !== null) properties["ATS Score"] = { number: app.ats_score };
   if (app.url) properties["URL"] = { url: app.url };
-  if (app.notes) properties["Notes"] = { rich_text: [{ text: { content: app.notes } }] };
+  const metaLine = [app.location, app.role_type].filter(Boolean).join(" | ");
+  const notesWithMeta = metaLine ? [metaLine, app.notes].filter(Boolean).join("\n") : app.notes;
+  if (notesWithMeta) properties["Notes"] = { rich_text: [{ text: { content: notesWithMeta } }] };
   return properties;
 }
 

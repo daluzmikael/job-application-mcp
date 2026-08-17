@@ -4,9 +4,9 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   readMetadata,
   writeMetadata,
+  findMetadata,
   listAllApplications,
   newApplicationId,
-  ensureCompanyFolder,
 } from "../lib/applications-store.js";
 import { ApplicationMetadata, ApplicationStatusSchema } from "../lib/schemas.js";
 import { jobPostingFilePath, followupDraftFilePath, APPLICATIONS_CSV_PATH } from "../lib/paths.js";
@@ -39,6 +39,8 @@ export function registerTrackingTools(server: McpServer) {
         company: z.string(),
         role: z.string(),
         url: z.string().optional(),
+        location: z.string().optional().describe("e.g. 'Boston, MA'"),
+        role_type: z.string().optional().describe("Work arrangement + employment type, e.g. 'Hybrid, Full-time'"),
         posting_date: z.string().optional(),
         applied_date: z.string().optional().describe("Defaults to today (ISO date)"),
         resume_file: z.string().optional().describe("Path to the resume PDF used"),
@@ -54,7 +56,11 @@ export function registerTrackingTools(server: McpServer) {
       },
     },
     async (input) => {
-      const existing = await readMetadata(input.company);
+      // Scoped to company+role -- a company with more than one open
+      // application gets its own metadata slot per role, so applying to a
+      // second role never overwrites the first one's record (or, via a
+      // stale cached notion_page_id, silently overwrites its Notion page).
+      const existing = await readMetadata(input.company, input.role);
       const now = new Date().toISOString();
       const appliedDate = input.applied_date ?? existing?.applied_date ?? todayIso();
       const merged: ApplicationMetadata = {
@@ -62,6 +68,8 @@ export function registerTrackingTools(server: McpServer) {
         company: input.company,
         role: input.role,
         url: input.url ?? existing?.url ?? null,
+        location: input.location ?? existing?.location ?? null,
+        role_type: input.role_type ?? existing?.role_type ?? null,
         posting_date: input.posting_date ?? existing?.posting_date ?? null,
         applied_date: appliedDate,
         resume_used: input.resume_file ?? existing?.resume_used ?? null,
@@ -81,14 +89,14 @@ export function registerTrackingTools(server: McpServer) {
       };
       const notionResult = await syncApplicationToNotion(merged);
       if (notionResult.page_id) merged.notion_page_id = notionResult.page_id;
-      await writeMetadata(input.company, merged);
+      const written = await writeMetadata(input.company, input.role, merged);
       if (input.job_posting_text) {
-        await ensureCompanyFolder(input.company);
-        await fs.writeFile(jobPostingFilePath(input.company), input.job_posting_text, "utf-8");
+        await fs.writeFile(jobPostingFilePath(written.filePath), input.job_posting_text, "utf-8");
       }
       return jsonResult({
         application: merged,
         updated_existing: existing !== null,
+        saved_to: written.filePath,
         notion_sync: notionResult,
       });
     }
@@ -100,17 +108,24 @@ export function registerTrackingTools(server: McpServer) {
       title: "Get application status",
       description:
         "Looks up a previously logged application by company name (e.g. \"Did I apply to Google yet?\", " +
-        "\"what resume did I use for Stripe?\").",
+        "\"what resume did I use for Stripe?\"). Pass role too if the company has more than one open " +
+        "application on file.",
       inputSchema: {
         company: z.string(),
+        role: z.string().optional(),
       },
     },
-    async ({ company }) => {
-      const meta = await readMetadata(company);
-      if (!meta) {
-        return jsonResult({ found: false, message: `No logged application found for "${company}".` });
+    async ({ company, role }) => {
+      const { record, allForCompany } = await findMetadata(company, role);
+      if (record) return jsonResult({ found: true, application: record.meta });
+      if (allForCompany.length > 1) {
+        return jsonResult({
+          found: false,
+          message: `Multiple applications logged for "${company}" -- specify role to disambiguate.`,
+          roles: allForCompany.map((f) => f.meta.role),
+        });
       }
-      return jsonResult({ found: true, application: meta });
+      return jsonResult({ found: false, message: `No logged application found for "${company}".` });
     }
   );
 
@@ -147,29 +162,34 @@ export function registerTrackingTools(server: McpServer) {
       description:
         "Generates a polite, brief follow-up email draft (subject + body) for a logged application, referencing " +
         "the role/company/applied date and 2-3 matched skill hooks if available. Saves the draft as " +
-        "followup_email.md in the company folder for review. Does NOT send anything -- Mikael reviews and sends " +
-        "it himself.",
+        "followup_email.md in the company folder for review (or followup_email.<role>.md if the company has " +
+        "more than one open application). Does NOT send anything -- Mikael reviews and sends it himself. Pass " +
+        "role if the company has more than one open application on file.",
       inputSchema: {
         company: z.string(),
+        role: z.string().optional(),
       },
     },
-    async ({ company }) => {
-      const meta = await readMetadata(company);
-      if (!meta) {
+    async ({ company, role }) => {
+      const { record, allForCompany } = await findMetadata(company, role);
+      if (!record) {
+        if (allForCompany.length > 1) {
+          return jsonResult({
+            found: false,
+            message: `Multiple applications logged for "${company}" -- specify role to disambiguate.`,
+            roles: allForCompany.map((f) => f.meta.role),
+          });
+        }
         return jsonResult({ found: false, message: `No logged application found for "${company}". Log it first with log_application.` });
       }
+      const meta = record.meta;
       const subject = `Application Follow-Up – ${meta.role} – Mikael Daluz`;
-      const hooks = meta.matched_keywords.slice(0, 3);
-      const hooksLine =
-        hooks.length > 0
-          ? `In particular, my experience with ${hooks.join(", ")} feels directly relevant to this role.`
-          : "";
       const appliedDateText = meta.applied_date ?? "recently";
-      const body = `Hi,
+      const body = `Hi there,
 
-I applied for the ${meta.role} role at ${meta.company} on ${appliedDateText} and wanted to follow up on my application status. ${hooksLine}
+My name is Mikael Daluz and I am a recent graduate of UConn's College of Engineering. I applied for the ${meta.role} role at ${meta.company} on ${appliedDateText} and wanted to follow up on my application status.
 
-I'm still very interested in this opportunity and would welcome the chance to discuss how I could contribute. Happy to answer any questions or provide additional materials in the meantime.
+I'm very interested in this opportunity and would welcome the chance to discuss what I would bring to the team. Happy to answer any questions or provide additional materials in the meantime.
 
 Best,
 Mikael Daluz
@@ -177,11 +197,11 @@ Mikael Daluz
 linkedin.com/in/mikaeldaluz | github.com/daluzmikael`;
 
       const draft = `Subject: ${subject}\n\n${body}\n`;
-      await ensureCompanyFolder(company);
-      await fs.writeFile(followupDraftFilePath(company), draft, "utf-8");
+      const draftPath = followupDraftFilePath(record.filePath);
+      await fs.writeFile(draftPath, draft, "utf-8");
 
       return jsonResult({
-        saved_to: followupDraftFilePath(company),
+        saved_to: draftPath,
         subject,
         body,
       });
