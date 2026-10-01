@@ -50,7 +50,12 @@ export function registerTrackingTools(server: McpServer) {
         matched_keywords: z.array(z.string()).optional(),
         missing_keywords: z.array(z.string()).optional(),
         notes: z.string().optional(),
-        status: ApplicationStatusSchema.optional(),
+        status: ApplicationStatusSchema.optional().describe(
+          "'flagged' = reach or uncertain-fit candidate worth a second look, not yet decided whether to pursue " +
+          "(e.g. requires a clearance/visa status not yet confirmed, or borderline experience level). Filterable " +
+          "as its own view in Notion. Once Mikael reviews the Notion 'Flagged' view and picks ones he likes, " +
+          "re-log with status 'not_applied' (or later) once the full tailor+track pipeline runs for it."
+        ),
         follow_up_date: z.string().optional().describe("Defaults to 7 days after applied_date if not set"),
         job_posting_text: z.string().optional().describe("If provided, saved as job_posting.md in the folder"),
       },

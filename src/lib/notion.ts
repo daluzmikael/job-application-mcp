@@ -10,6 +10,7 @@ const NOTION_API_BASE = "https://api.notion.com/v1";
 
 const STATUS_MAP: Record<ApplicationStatus, string> = {
   not_applied: "Not applied",
+  flagged: "Flagged",
   applied: "Applied",
   reviewing: "Reviewing application",
   interviewing: "Interviewing",

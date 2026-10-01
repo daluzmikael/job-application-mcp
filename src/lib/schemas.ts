@@ -17,6 +17,7 @@ export type JobPosting = z.infer<typeof JobPostingSchema>;
 
 export const ApplicationStatusSchema = z.enum([
   "not_applied",
+  "flagged",
   "applied",
   "reviewing",
   "interviewing",

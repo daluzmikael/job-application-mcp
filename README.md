@@ -2,6 +2,13 @@
 
 An **MCP server** for a data-driven job search workflow: search postings, tailor resumes, score ATS fit, track applications in Notion, and generate live analytics dashboards.
 
+## Candidate facts (read first)
+
+Standing facts that never change between searches live in **[CANDIDATE_FACTS.md](CANDIDATE_FACTS.md)**.
+Most important: **Mikael is a full US citizen** — he never needs visa sponsorship and is eligible for
+any clearance a role sponsors, so "no sponsorship" / "must be able to obtain a clearance" language is
+not a gap and is deliberately not reported as a red flag.
+
 ## Overview
 
 This server is **host-LLM-driven** — no `ANTHROPIC_API_KEY`, no internal AI. It provides deterministic tools (search, parsing, keyword scoring, tracking) and delegates all reasoning to the calling assistant. The goal is to remove friction from the job search: log an application once, automatically sync to Notion, and get real-time pipeline analytics showing which portfolio projects actually land interviews.

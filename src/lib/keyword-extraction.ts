@@ -52,22 +52,36 @@ function detectSalaryRange(text: string): string | null {
   return null;
 }
 
+// CANDIDATE FACT (permanent): Mikael is a full US citizen. He does not now, and never will,
+// require visa sponsorship, and he is eligible for any security clearance a role sponsors.
+// Therefore "no sponsorship / must be authorized to work in the US" and "must be able to OBTAIN
+// a clearance" are NOT red flags for him and must never be reported as such -- nearly every US
+// posting carries that language and flagging it is pure noise. Only an ALREADY-ACTIVE clearance
+// is a real gate, since that cannot be self-obtained before being hired.
 const RED_FLAG_PATTERNS: { re: RegExp; label: string }[] = [
-  { re: /\b(active\s+)?(ts\/sci|top secret)\b/i, label: "Requires active TS/SCI clearance" },
+  { re: /\bactive\s+(?:ts\/sci|top secret|secret)\s+clearance\b|\bcurrent\s+(?:ts\/sci|top secret)\b/i, label: "Requires an ALREADY-ACTIVE clearance (cannot be obtained post-hire)" },
   { re: /\bmust\s+be\s+(?:on-?site|in-office)\b/i, label: "Onsite required, no remote option" },
   { re: /\bunpaid\b/i, label: "Unpaid position" },
-  { re: /\bno\s+(?:visa\s+)?sponsorship\b/i, label: "No visa sponsorship" },
   { re: /\bmaster'?s?\s+degree\s+required\b|\bphd\s+required\b/i, label: "Advanced degree required" },
 ];
 
-/** 5+ years (or a range reaching 5+, e.g. "4-6 years") called out as a red flag separately from RED_FLAG_PATTERNS since it needs the same range-aware matching as detectSeniority. */
+/**
+ * Any stated years-of-experience requirement, reported range-aware.
+ *
+ * Threshold lowered from 5+ to 2+ on 2026-09-21: Mikael is a May 2026 graduate with no
+ * professional years, so a "2-4 years" or "6 years" line is just as disqualifying as "5+".
+ * A career-fair list built elsewhere had missed exactly these -- a 6-year state IT req and a
+ * 2-4 year BI req were both reported as entry-level. A 0-2 / 0-3 band is NOT flagged, since
+ * those are genuinely open to a new grad.
+ */
 function detectYearsRedFlag(text: string): string | null {
   const lower = text.toLowerCase();
   const m = lower.match(/(\d+)\+?\s*(?:-\s*(\d+)\s*)?\+?\s*years?\b(?:[^.\n]{0,60}\bexperience\b)?/);
   if (!m) return null;
   const low = parseInt(m[1], 10);
   const high = m[2] ? parseInt(m[2], 10) : low;
-  if (high >= 5) return `Requires ${m[2] ? `${low}-${high}` : `${low}+`} years experience`;
+  if (low === 0) return null; // "0-2 years" / "0-3 years" -- open to a new grad
+  if (low >= 2) return `Requires ${m[2] ? `${low}-${high}` : `${low}+`} years experience (Mikael has 0 professional years)`;
   return null;
 }
 
